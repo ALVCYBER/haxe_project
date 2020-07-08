@@ -1,34 +1,135 @@
+import haxe.ValueException;
+import haxe.io.Error;
+
+// import sys.io;
+
 
 class Main {
 	static function main() {
-		var cars:Map<String, Car> = new Map();
-		cars["red"] = new Car("red", Horizontal, 2);
-		cars["blue"] = new Car("blue", Vertical, 3);
-		cars["green"] = new Car("green", Horizontal, 2);
-		cars["yellow"] = new Car("yellow", Vertical, 4);
 
-		final board = new Board(new Coord(5,2));
-		board.boardState = [
-			[null, null, null, null, null, null],
-			[null, null, null, null, null, "blue"],
-			["red", "red", null, null, null, "blue"],
-			[null, null, null, "yellow", null, "blue"],
-			[null, null, null, "yellow", "green", "green"],
-			[null, null, null, "yellow", null, null],
-			[null, null, null, "yellow", null, null],
-		];
+		var input = Sys.stdin();
+		var output = Sys.stdout();
+
+		trace("Please enter an board state line by line. Enter an empty line to finish");
+		// output.writeString("Please enter an board state line by line. Enter an empty line to finish");
+
+		var boardInput = new Array<String>();
+		while (true) {
+			var inputString = input.readLine();
+			if(inputString == "") {
+				break;
+			}
+			boardInput.push(inputString);
+		}
+
+		trace("Enter the name of the goal car");
+		final goalCarName = input.readLine();
+		trace("Enter the goal zeroed coordinates (X,Y) of the goal car with a space between the coordinates");
+		var coordinates = input.readLine().split(" ");
+		coordinates.resize(2);
+		final goalX: Int = Std.parseInt(coordinates[0]);
+		final goalY: Int = Std.parseInt(coordinates[1]);
+
+		// trace("Enter the goal coordinates of the goal car");
+
+		var boardState = createBoardFromInput(boardInput);
+		var cars = identifyCarsFromBoard(boardState);
+
+		// var cars:Map<String, Car> = new Map();
+		// cars["red"] = new Car("red", Horizontal, 2);
+		// cars["blue"] = new Car("blue", Vertical, 3);
+		// cars["green"] = new Car("green", Horizontal, 2);
+		// cars["yellow"] = new Car("yellow", Vertical, 4);
+
+		// final board = new Board(new Coord(5,2));
+		// board.boardState = [
+		// 	[null, null, null, null, null, null],
+		// 	[null, null, null, null, null, "blue"],
+		// 	["red", "red", null, null, null, "blue"],
+		// 	[null, null, null, "yellow", null, "blue"],
+		// 	[null, null, null, "yellow", "green", "green"],
+		// 	[null, null, null, "yellow", null, null],
+		// 	[null, null, null, "yellow", null, null],
+		// ];
+
+		final board = new Board(new Coord(goalX, goalY));
+		board.boardState = boardState;
 
 		trace('Starting from:');
 		trace(board.state());
+		trace('Getting \'$goalCarName\' to ${board.goal}');
 
-		final solution = Solver.solve(board, cars, "red");
-		if(solution == null) {
+		final solution = Solver.solve(board, cars, goalCarName);
+		
+		printSolutionResults(solution);
+
+	}
+
+	private static function createBoardFromInput(inputRows: Array<String>): Array<Array<String>> {
+		var boardState = inputRows.map(function(line) return line.split("").map(function(cell) return cell == "." ? null : cell));
+
+		// validate all the lines are equal length
+		var rowLength: Int = -1;
+		for (row in boardState) {
+			if (rowLength == -1) {
+				rowLength = row.length;
+			} else if (row.length != rowLength) {
+				throw new ValueException("Invalid board input. Board sise is not uniform"); 
+			}
+		}
+
+		if(rowLength == -1) {
+			throw new ValueException("Invalid board input. There are no rows");
+		}
+
+		return boardState;
+	}
+
+	private static function identifyCarsFromBoard(boardState: Array<Array<String>>): Map<String, Car> {
+
+		var cars = new Map<String, Car>();
+
+		for (y in 0...boardState.length) {
+			for (x in 0...boardState[y].length) {
+				var carName: String = boardState[y][x];
+				if (carName == null || cars.exists(carName)) {
+					continue;
+				}
+
+				// check horizontally
+				{
+					var size = 0;
+					while(size + x < boardState[y].length && boardState[y][x+size] == carName) {
+						size++;
+					}
+					if(size > 1) {
+						cars[carName] = new Car(carName, Horizontal, size);
+					}
+				}
+				// check vertically
+				{
+					var size = 0;
+					while (size + y < boardState.length && boardState[y + size][x] == carName) {
+						size++;
+					}
+					if (size > 1) {
+						cars[carName] = new Car(carName, Vertical, size);
+					}
+				}
+				
+			}
+		}
+		return cars;
+	}
+
+	private static function printSolutionResults(solution: Board) {
+		if (solution == null) {
 			trace("No solution found");
 		} else {
 			// squash similar moves together
 			final squashedMoves = new List<Move>();
-			var currentMove: Move = null;
-			for(move in solution.moveList) {
+			var currentMove:Move = null;
+			for (move in solution.moveList) {
 				if (currentMove == null) {
 					currentMove = move;
 					continue;
@@ -44,7 +145,6 @@ class Main {
 				trace(currentMove.description());
 			}
 		}
-
 	}
 }
 
@@ -117,7 +217,7 @@ class Solver {
 						newBoard.moveList.add(new Move(carName, "Left"));
 						newBoards.add(newBoard);
 					}
-					if (x + carData.size < board.boardState.length && board.boardState[y][x + carData.size] == null) {
+					if (x + carData.size < board.boardState[y].length && board.boardState[y][x + carData.size] == null) {
 						final newBoard = board.clone();
 						newBoard.boardState[y][x] = null;
 						newBoard.boardState[y][x + carData.size] = carName;
@@ -168,6 +268,7 @@ class Board {
 		newBoard.boardState = this.boardState.map(function (row) return row.copy());
 		newBoard.previousBoard = this;
 		newBoard.moveList = this.moveList.map(function(x) return x); // psuedo-copy
+		newBoard.goal = this.goal;
 		return newBoard;
 	}
 
@@ -178,7 +279,7 @@ class Board {
 	public function isSolved(carName: String): Bool {
 		return boardState[goal.y][goal.x] == carName;
 	}
-
+	
 }
 
 class Coord {

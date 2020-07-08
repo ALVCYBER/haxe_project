@@ -1,0 +1,6 @@
+-cp src
+-D analyzer-optimize
+# -lib haxeui-core
+# -lib haxeui-html5
+-main Main
+--js js/script.js
